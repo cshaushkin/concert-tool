@@ -58,11 +58,22 @@ export default function ConcertQueryTool() {
         audioUrl: track.preview_url || "",
       }));
 
-      // Create a fake concert card with top tracks
+      // Build artist info
+      const artistInfo = {
+        name: spotifyArtist.name,
+        image: spotifyArtist.images[0]?.url || "",
+        genres: spotifyArtist.genres || [],
+        followers: spotifyArtist.followers.total || 0,
+        popularity: spotifyArtist.popularity || 0,
+        spotifyUrl: spotifyArtist.external_urls.spotify,
+      };
+
+      // Create a fake concert card with top tracks and artist info
       const fakeConcert = {
         date: new Date().toLocaleDateString(),
         venue: `${spotifyArtist.name} Top Tracks`,
         setlist: topTracks,
+        artistInfo,
       };
 
       setConcerts([fakeConcert]);
@@ -94,6 +105,37 @@ export default function ConcertQueryTool() {
         />
         <button onClick={fetchConcerts}>Search</button>
       </div>
+
+      {concerts.length > 0 && concerts[0].artistInfo && (
+        <motion.div
+          style={{
+            textAlign: "center",
+            marginBottom: "30px",
+            padding: "15px",
+            border: "1px solid #ddd",
+            borderRadius: "10px",
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <img
+            src={concerts[0].artistInfo.image}
+            alt="Artist"
+            style={{ width: "150px", borderRadius: "8px", marginBottom: "10px" }}
+          />
+          <h2>{concerts[0].artistInfo.name}</h2>
+          <p>Genres: {concerts[0].artistInfo.genres.join(", ") || "N/A"}</p>
+          <p>Followers: {concerts[0].artistInfo.followers.toLocaleString()}</p>
+          <p>Popularity: {concerts[0].artistInfo.popularity}/100</p>
+          <a
+            href={concerts[0].artistInfo.spotifyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open on Spotify
+          </a>
+        </motion.div>
+      )}
 
       <div>
         {concerts.map((concert, index) => (
