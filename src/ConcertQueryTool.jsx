@@ -56,9 +56,15 @@ export default function ConcertQueryTool() {
       const topTracks = (topTracksData.tracks || []).slice(0, 5).map((track) => ({
         title: track.name,
         audioUrl: track.preview_url || "",
+        duration:
+          Math.floor(track.duration_ms / 60000) +
+          ":" +
+          String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, "0"),
+        explicit: track.explicit,
+        albumArt: track.album.images[0]?.url || "",
+        spotifyUrl: track.external_urls.spotify,
       }));
 
-      // Build artist info
       const artistInfo = {
         name: spotifyArtist.name,
         image: spotifyArtist.images[0]?.url || "",
@@ -68,7 +74,6 @@ export default function ConcertQueryTool() {
         spotifyUrl: spotifyArtist.external_urls.spotify,
       };
 
-      // Create a fake concert card with top tracks and artist info
       const fakeConcert = {
         date: new Date().toLocaleDateString(),
         venue: `${spotifyArtist.name} Top Tracks`,
@@ -153,15 +158,44 @@ export default function ConcertQueryTool() {
             <h2 style={{ fontSize: "18px", fontWeight: "bold" }}>
               {concert.date} - {concert.venue}
             </h2>
-            <ul style={{ marginTop: "10px" }}>
+            <ul style={{ marginTop: "10px", listStyle: "none", paddingLeft: 0 }}>
               {concert.setlist.map((song, i) => (
-                <li key={i} style={{ marginBottom: "5px" }}>
-                  <strong>{song.title}</strong>
-                  {song.audioUrl ? (
-                    <audio controls src={song.audioUrl} style={{ marginLeft: "10px" }} />
-                  ) : (
-                    <span style={{ marginLeft: "10px", color: "gray" }}>No preview available</span>
-                  )}
+                <li key={i} style={{ marginBottom: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <img
+                      src={song.albumArt}
+                      alt="Album Art"
+                      style={{
+                        width: "60px",
+                        borderRadius: "5px",
+                        marginRight: "10px",
+                      }}
+                    />
+                    <div>
+                      <strong>{song.title}</strong>{" "}
+                      {song.explicit && (
+                        <span style={{ color: "red", marginLeft: "5px" }}>🔞 Explicit</span>
+                      )}
+                      <p style={{ margin: 0 }}>Duration: {song.duration}</p>
+                      <a
+                        href={song.spotifyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open in Spotify
+                      </a>
+                      <br />
+                      {song.audioUrl ? (
+                        <audio
+                          controls
+                          src={song.audioUrl}
+                          style={{ marginTop: "5px", width: "250px" }}
+                        />
+                      ) : (
+                        <span style={{ color: "gray" }}>No preview available</span>
+                      )}
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>
