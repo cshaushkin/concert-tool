@@ -133,6 +133,7 @@ export default function ConcertQueryTool() {
             explicit: track.explicit,
             albumArt: track.album.images[0]?.url || "",
             spotifyUrl: track.external_urls.spotify,
+            isrc: track.external_ids?.isrc || "N/A", // ISRC from Spotify
             mbInfo,
           };
         })
@@ -266,6 +267,7 @@ export default function ConcertQueryTool() {
                         <span style={{ color: "red", marginLeft: "5px" }}>🔞 Explicit</span>
                       )}
                       <p style={{ margin: 0 }}>Spotify Duration: {song.duration}</p>
+                      <p style={{ margin: 0 }}>🆔 ISRC: {song.isrc}</p>
                       <a href={song.spotifyUrl} target="_blank" rel="noopener noreferrer">
                         Open in Spotify
                       </a>
