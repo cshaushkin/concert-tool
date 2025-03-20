@@ -16,6 +16,45 @@ export default function ConcertQueryTool() {
     }
   };
 
+  const fetchMusicBrainzInfo = async (title, artistName) => {
+    try {
+      const query = `recording:"${title}" AND artist:"${artistName}"`;
+      const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=1`;
+
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "ConcertQueryTool/1.0 (your-email@example.com)",
+        },
+      });
+
+      const data = await response.json();
+      const recording = data.recordings?.[0];
+
+      if (!recording) return null;
+
+      const durationMs = recording.length;
+      const durationFormatted = durationMs
+        ? Math.floor(durationMs / 60000) + ":" + String(Math.floor((durationMs % 60000) / 1000)).padStart(2, "0")
+        : "N/A";
+
+      const release = recording.releases?.[0];
+      const releaseTitle = release?.title || "Unknown Album";
+      const releaseDate = release?.date ? release.date.split("-")[0] : "Unknown Year";
+      const artist = recording["artist-credit"]?.[0]?.name || artistName;
+
+      return {
+        artist,
+        album: releaseTitle,
+        year: releaseDate,
+        duration: durationFormatted,
+        musicBrainzUrl: `https://musicbrainz.org/recording/${recording.id}`,
+      };
+    } catch (error) {
+      console.error("Error fetching MusicBrainz data:", error);
+      return null;
+    }
+  };
+
   const fetchConcerts = async () => {
     try {
       if (!spotifyToken) {
@@ -23,7 +62,6 @@ export default function ConcertQueryTool() {
         return;
       }
 
-      // Search Spotify for the artist ID
       const searchResponse = await fetch(
         `https://api.spotify.com/v1/search?q=${encodeURIComponent(artist)}&type=artist&limit=1`,
         {
@@ -42,7 +80,6 @@ export default function ConcertQueryTool() {
 
       const spotifyArtistId = spotifyArtist.id;
 
-      // Get top tracks for the artist
       const topTracksResponse = await fetch(
         `https://api.spotify.com/v1/artists/${spotifyArtistId}/top-tracks?market=US`,
         {
@@ -53,17 +90,24 @@ export default function ConcertQueryTool() {
       );
       const topTracksData = await topTracksResponse.json();
 
-      const topTracks = (topTracksData.tracks || []).slice(0, 5).map((track) => ({
-        title: track.name,
-        audioUrl: track.preview_url || "",
-        duration:
-          Math.floor(track.duration_ms / 60000) +
-          ":" +
-          String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, "0"),
-        explicit: track.explicit,
-        albumArt: track.album.images[0]?.url || "",
-        spotifyUrl: track.external_urls.spotify,
-      }));
+      const topTracks = await Promise.all(
+        topTracksData.tracks.slice(0, 5).map(async (track) => {
+          const mbInfo = await fetchMusicBrainzInfo(track.name, spotifyArtist.name);
+
+          return {
+            title: track.name,
+            audioUrl: track.preview_url || "",
+            duration:
+              Math.floor(track.duration_ms / 60000) +
+              ":" +
+              String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, "0"),
+            explicit: track.explicit,
+            albumArt: track.album.images[0]?.url || "",
+            spotifyUrl: track.external_urls.spotify,
+            mbInfo,
+          };
+        })
+      );
 
       const artistInfo = {
         name: spotifyArtist.name,
@@ -83,7 +127,7 @@ export default function ConcertQueryTool() {
 
       setConcerts([fakeConcert]);
     } catch (error) {
-      console.error("Error fetching data from Spotify:", error);
+      console.error("Error fetching data from Spotify or MusicBrainz:", error);
     }
   };
 
@@ -176,7 +220,7 @@ export default function ConcertQueryTool() {
                       {song.explicit && (
                         <span style={{ color: "red", marginLeft: "5px" }}>🔞 Explicit</span>
                       )}
-                      <p style={{ margin: 0 }}>Duration: {song.duration}</p>
+                      <p style={{ margin: 0 }}>Spotify Duration: {song.duration}</p>
                       <a
                         href={song.spotifyUrl}
                         target="_blank"
@@ -193,6 +237,27 @@ export default function ConcertQueryTool() {
                         />
                       ) : (
                         <span style={{ color: "gray" }}>No preview available</span>
+                      )}
+
+                      {song.mbInfo && (
+                        <div style={{ marginTop: "5px", fontSize: "14px", color: "#333" }}>
+                          <p style={{ margin: 0 }}>
+                            🎤 Artist: {song.mbInfo.artist}
+                          </p>
+                          <p style={{ margin: 0 }}>
+                            💿 Album: {song.mbInfo.album} ({song.mbInfo.year})
+                          </p>
+                          <p style={{ margin: 0 }}>
+                            ⏱️ MusicBrainz Duration: {song.mbInfo.duration}
+                          </p>
+                          <a
+                            href={song.mbInfo.musicBrainzUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            View on MusicBrainz
+                          </a>
+                        </div>
                       )}
                     </div>
                   </div>
