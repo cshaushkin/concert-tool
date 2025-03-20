@@ -16,6 +16,41 @@ export default function ConcertQueryTool() {
     }
   };
 
+  const fetchMusicBrainzArtistInfo = async (artistName) => {
+    try {
+      const url = `https://musicbrainz.org/ws/2/artist/?query=artist:"${encodeURIComponent(artistName)}"&fmt=json&limit=1`;
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "ConcertQueryTool/1.0 (your-email@example.com)",
+        },
+      });
+      const data = await response.json();
+      const artist = data.artists?.[0];
+      if (!artist) return null;
+
+      const country = artist.area?.name || "Unknown";
+      const birth = artist["life-span"]?.begin || "Unknown";
+      const death = artist["life-span"]?.ended ? artist["life-span"].end : "Present";
+
+      const relUrl = `https://musicbrainz.org/ws/2/artist/${artist.id}?inc=url-rels&fmt=json`;
+      const relRes = await fetch(relUrl, {
+        headers: {
+          "User-Agent": "ConcertQueryTool/1.0 (your-email@example.com)",
+        },
+      });
+      const relData = await relRes.json();
+      const urls = relData.relations || [];
+
+      const wikipedia = urls.find((r) => r.type === "wikipedia")?.url?.resource || null;
+      const discogs = urls.find((r) => r.type === "discogs")?.url?.resource || null;
+
+      return { country, birth, death, wikipedia, discogs };
+    } catch (error) {
+      console.error("Error fetching MusicBrainz artist info:", error);
+      return null;
+    }
+  };
+
   const fetchMusicBrainzInfo = async (title, artistName) => {
     try {
       const query = `recording:"${title}" AND artist:"${artistName}"`;
@@ -29,7 +64,6 @@ export default function ConcertQueryTool() {
 
       const data = await response.json();
       const recording = data.recordings?.[0];
-
       if (!recording) return null;
 
       const durationMs = recording.length;
@@ -72,16 +106,12 @@ export default function ConcertQueryTool() {
       );
       const searchData = await searchResponse.json();
       const spotifyArtist = searchData.artists.items[0];
+      if (!spotifyArtist) return;
 
-      if (!spotifyArtist) {
-        console.error("Artist not found on Spotify");
-        return;
-      }
-
-      const spotifyArtistId = spotifyArtist.id;
+      const mbArtistInfo = await fetchMusicBrainzArtistInfo(spotifyArtist.name);
 
       const topTracksResponse = await fetch(
-        `https://api.spotify.com/v1/artists/${spotifyArtistId}/top-tracks?market=US`,
+        `https://api.spotify.com/v1/artists/${spotifyArtist.id}/top-tracks?market=US`,
         {
           headers: {
             Authorization: `Bearer ${spotifyToken}`,
@@ -93,7 +123,6 @@ export default function ConcertQueryTool() {
       const topTracks = await Promise.all(
         topTracksData.tracks.slice(0, 5).map(async (track) => {
           const mbInfo = await fetchMusicBrainzInfo(track.name, spotifyArtist.name);
-
           return {
             title: track.name,
             audioUrl: track.preview_url || "",
@@ -116,6 +145,7 @@ export default function ConcertQueryTool() {
         followers: spotifyArtist.followers.total || 0,
         popularity: spotifyArtist.popularity || 0,
         spotifyUrl: spotifyArtist.external_urls.spotify,
+        mbInfo: mbArtistInfo,
       };
 
       const fakeConcert = {
@@ -176,13 +206,28 @@ export default function ConcertQueryTool() {
           <p>Genres: {concerts[0].artistInfo.genres.join(", ") || "N/A"}</p>
           <p>Followers: {concerts[0].artistInfo.followers.toLocaleString()}</p>
           <p>Popularity: {concerts[0].artistInfo.popularity}/100</p>
-          <a
-            href={concerts[0].artistInfo.spotifyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href={concerts[0].artistInfo.spotifyUrl} target="_blank" rel="noopener noreferrer">
             Open on Spotify
           </a>
+
+          {concerts[0].artistInfo.mbInfo && (
+            <div style={{ marginTop: "10px", fontSize: "14px", color: "#333" }}>
+              <p style={{ margin: 0 }}>🌍 Country: {concerts[0].artistInfo.mbInfo.country}</p>
+              <p style={{ margin: 0 }}>
+                📅 Life Span: {concerts[0].artistInfo.mbInfo.birth} - {concerts[0].artistInfo.mbInfo.death}
+              </p>
+              {concerts[0].artistInfo.mbInfo.wikipedia && (
+                <p style={{ margin: 0 }}>
+                  📖 <a href={concerts[0].artistInfo.mbInfo.wikipedia} target="_blank" rel="noopener noreferrer">Wikipedia</a>
+                </p>
+              )}
+              {concerts[0].artistInfo.mbInfo.discogs && (
+                <p style={{ margin: 0 }}>
+                  💿 <a href={concerts[0].artistInfo.mbInfo.discogs} target="_blank" rel="noopener noreferrer">Discogs</a>
+                </p>
+              )}
+            </div>
+          )}
         </motion.div>
       )}
 
@@ -221,40 +266,22 @@ export default function ConcertQueryTool() {
                         <span style={{ color: "red", marginLeft: "5px" }}>🔞 Explicit</span>
                       )}
                       <p style={{ margin: 0 }}>Spotify Duration: {song.duration}</p>
-                      <a
-                        href={song.spotifyUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
+                      <a href={song.spotifyUrl} target="_blank" rel="noopener noreferrer">
                         Open in Spotify
                       </a>
                       <br />
                       {song.audioUrl ? (
-                        <audio
-                          controls
-                          src={song.audioUrl}
-                          style={{ marginTop: "5px", width: "250px" }}
-                        />
+                        <audio controls src={song.audioUrl} style={{ marginTop: "5px", width: "250px" }} />
                       ) : (
                         <span style={{ color: "gray" }}>No preview available</span>
                       )}
 
                       {song.mbInfo && (
                         <div style={{ marginTop: "5px", fontSize: "14px", color: "#333" }}>
-                          <p style={{ margin: 0 }}>
-                            🎤 Artist: {song.mbInfo.artist}
-                          </p>
-                          <p style={{ margin: 0 }}>
-                            💿 Album: {song.mbInfo.album} ({song.mbInfo.year})
-                          </p>
-                          <p style={{ margin: 0 }}>
-                            ⏱️ MusicBrainz Duration: {song.mbInfo.duration}
-                          </p>
-                          <a
-                            href={song.mbInfo.musicBrainzUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
+                          <p style={{ margin: 0 }}>🎤 Artist: {song.mbInfo.artist}</p>
+                          <p style={{ margin: 0 }}>💿 Album: {song.mbInfo.album} ({song.mbInfo.year})</p>
+                          <p style={{ margin: 0 }}>⏱️ MusicBrainz Duration: {song.mbInfo.duration}</p>
+                          <a href={song.mbInfo.musicBrainzUrl} target="_blank" rel="noopener noreferrer">
                             View on MusicBrainz
                           </a>
                         </div>
