@@ -109,7 +109,7 @@ export default function ConcertQueryTool() {
   };
 
   return (
-    <div style={{ padding: "20px", maxWidth: "800px", margin: "auto" }}>
+    <div style={{ padding: "20px", maxWidth: "1000px", margin: "auto" }}>
       <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "10px" }}>
         🎧 Music Metadata Tool
       </h1>
@@ -168,41 +168,70 @@ export default function ConcertQueryTool() {
         <>
           <button onClick={() => setView("search")}>⬅ Back</button>
           <h2>Results</h2>
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {results.map((track, index) => (
-              <motion.li
-                key={index}
-                style={{ marginBottom: "20px", border: "1px solid #ccc", padding: "10px", borderRadius: "10px" }}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <strong>{track.name}</strong> by {track.artists[0].name}
-                <p>🆔 ISRC: {track.external_ids?.isrc || "N/A"}</p>
-                <p>
-                  <a href={track.external_urls.spotify} target="_blank" rel="noopener noreferrer">
-                    Open in Spotify
-                  </a>
-                </p>
-                {track.preview_url ? (
-                  <audio controls src={track.preview_url} style={{ width: "100%" }} />
-                ) : (
-                  <p>No preview available</p>
-                )}
-                {track.mbInfo && (
-                  <div style={{ marginTop: "10px", fontSize: "14px" }}>
-                    <p>🎤 Artist: {track.mbInfo.artist}</p>
-                    <p>💿 Album: {track.mbInfo.album} ({track.mbInfo.year})</p>
-                    <p>⏱️ Duration: {track.mbInfo.duration}</p>
-                    <p>℗ Label (P Line): {track.mbInfo.label}</p>
-                    <p>© Copyright (C Line): {track.mbInfo.copyright}</p>
-                    <a href={track.mbInfo.musicBrainzUrl} target="_blank" rel="noopener noreferrer">
-                      View on MusicBrainz
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ backgroundColor: "#f0f0f0" }}>
+                <th style={{ padding: "8px", border: "1px solid #ccc" }}>Album Art</th>
+                <th style={{ padding: "8px", border: "1px solid #ccc" }}>Track Info</th>
+                <th style={{ padding: "8px", border: "1px solid #ccc" }}>Spotify Duration</th>
+                <th style={{ padding: "8px", border: "1px solid #ccc" }}>MusicBrainz Info</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((track, index) => (
+                <motion.tr
+                  key={index}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  style={{ borderBottom: "1px solid #ccc" }}
+                >
+                  <td style={{ padding: "8px", border: "1px solid #ccc", textAlign: "center" }}>
+                    <img
+                      src={track.album.images[0]?.url}
+                      alt="Album Art"
+                      style={{ width: "60px", borderRadius: "5px" }}
+                    />
+                  </td>
+                  <td style={{ padding: "8px", border: "1px solid #ccc" }}>
+                    <strong>{track.name}</strong>
+                    {track.explicit && <span style={{ color: "red", marginLeft: "5px" }}>🔞 Explicit</span>}
+                    <p style={{ margin: 0 }}>Artist: {track.artists[0].name}</p>
+                    <p style={{ margin: 0 }}>Album: {track.album.name} ({track.album.release_date})</p>
+                    <p style={{ margin: 0 }}>ISRC: {track.external_ids?.isrc || "N/A"}</p>
+                    <a href={track.external_urls.spotify} target="_blank" rel="noopener noreferrer">
+                      Open in Spotify
                     </a>
-                  </div>
-                )}
-              </motion.li>
-            ))}
-          </ul>
+                    <br />
+                    {track.preview_url ? (
+                      <audio controls src={track.preview_url} style={{ marginTop: "5px", width: "200px" }} />
+                    ) : (
+                      <span style={{ color: "gray" }}>No preview</span>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px", border: "1px solid #ccc" }}>
+                    {Math.floor(track.duration_ms / 60000)}:
+                    {String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, "0")}
+                  </td>
+                  <td style={{ padding: "8px", border: "1px solid #ccc" }}>
+                    {track.mbInfo ? (
+                      <>
+                        <p style={{ margin: 0 }}>Artist: {track.mbInfo.artist}</p>
+                        <p style={{ margin: 0 }}>Album: {track.mbInfo.album} ({track.mbInfo.year})</p>
+                        <p style={{ margin: 0 }}>Duration: {track.mbInfo.duration}</p>
+                        <p style={{ margin: 0 }}>℗ Label: {track.mbInfo.label}</p>
+                        <p style={{ margin: 0 }}>©: {track.mbInfo.copyright}</p>
+                        <a href={track.mbInfo.musicBrainzUrl} target="_blank" rel="noopener noreferrer">
+                          View on MusicBrainz
+                        </a>
+                      </>
+                    ) : (
+                      <span style={{ color: "gray" }}>No MB info</span>
+                    )}
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
         </>
       )}
     </div>
