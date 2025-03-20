@@ -8,7 +8,7 @@ export default function ConcertQueryTool() {
 
   const fetchSpotifyToken = async () => {
     try {
-      const response = await fetch("https://hurricane-fluttering-tapir.glitch.me/api/spotify-token");
+      const response = await fetch("/api/spotify-token");
       const data = await response.json();
       setSpotifyToken(data.access_token);
     } catch (error) {
