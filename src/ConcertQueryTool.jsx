@@ -40,7 +40,7 @@ export default function ConcertQueryTool() {
       const releaseTitle = release?.title || "Unknown Album";
       const releaseDate = release?.date ? release.date.split("-")[0] : "Unknown Year";
       const artist = recording["artist-credit"]?.[0]?.name || artistName;
-      const label = release?.label-info?.[0]?.label?.name || "Unknown Label";
+      const label = release?.["label-info"]?.[0]?.label?.name || "Unknown Label";
       const copyright = release?.disambiguation || "Unknown © Info";
 
       return {
