@@ -2,12 +2,11 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 
 export default function ConcertQueryTool() {
-  const [view, setView] = useState("search"); // "search" | "results" | "details"
-  const [searchMode, setSearchMode] = useState("artist"); // "artist" | "track" | "isrc"
+  const [view, setView] = useState("search");
+  const [searchMode, setSearchMode] = useState("artist");
   const [query, setQuery] = useState("");
   const [spotifyToken, setSpotifyToken] = useState("");
   const [results, setResults] = useState([]);
-  const [selectedTrack, setSelectedTrack] = useState(null);
 
   const fetchSpotifyToken = async () => {
     try {
@@ -22,7 +21,7 @@ export default function ConcertQueryTool() {
   const fetchMusicBrainzInfo = async (title, artistName) => {
     try {
       const query = `recording:"${title}" AND artist:"${artistName}"`;
-      const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=1`;
+      const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=1&inc=artist-credits+releases+labels`;
 
       const response = await fetch(url, {
         headers: { "User-Agent": "ConcertQueryTool/1.0 (your-email@example.com)" },
@@ -41,12 +40,16 @@ export default function ConcertQueryTool() {
       const releaseTitle = release?.title || "Unknown Album";
       const releaseDate = release?.date ? release.date.split("-")[0] : "Unknown Year";
       const artist = recording["artist-credit"]?.[0]?.name || artistName;
+      const label = release?.label-info?.[0]?.label?.name || "Unknown Label";
+      const copyright = release?.disambiguation || "Unknown © Info";
 
       return {
         artist,
         album: releaseTitle,
         year: releaseDate,
         duration: durationFormatted,
+        label,
+        copyright,
         musicBrainzUrl: `https://musicbrainz.org/recording/${recording.id}`,
       };
     } catch (error) {
@@ -61,9 +64,7 @@ export default function ConcertQueryTool() {
       return;
     }
 
-    const queryParam =
-      searchMode === "isrc" ? `isrc:${query}` : query;
-
+    const queryParam = searchMode === "isrc" ? `isrc:${query}` : query;
     const type = searchMode === "artist" ? "artist" : "track";
 
     const response = await fetch(
@@ -192,6 +193,8 @@ export default function ConcertQueryTool() {
                     <p>🎤 Artist: {track.mbInfo.artist}</p>
                     <p>💿 Album: {track.mbInfo.album} ({track.mbInfo.year})</p>
                     <p>⏱️ Duration: {track.mbInfo.duration}</p>
+                    <p>℗ Label (P Line): {track.mbInfo.label}</p>
+                    <p>© Copyright (C Line): {track.mbInfo.copyright}</p>
                     <a href={track.mbInfo.musicBrainzUrl} target="_blank" rel="noopener noreferrer">
                       View on MusicBrainz
                     </a>
