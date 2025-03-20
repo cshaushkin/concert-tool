@@ -23,69 +23,51 @@ export default function ConcertQueryTool() {
         return;
       }
 
-      const artistResponse = await fetch(
-        `https://musicbrainz.org/ws/2/artist/?query=artist:${encodeURIComponent(artist)}&fmt=json`,
+      // Search Spotify for the artist ID
+      const searchResponse = await fetch(
+        `https://api.spotify.com/v1/search?q=${encodeURIComponent(artist)}&type=artist&limit=1`,
         {
           headers: {
-            "User-Agent": "ConcertQueryTool/1.0 (your-email@example.com)",
+            Authorization: `Bearer ${spotifyToken}`,
           },
         }
       );
+      const searchData = await searchResponse.json();
+      const spotifyArtist = searchData.artists.items[0];
 
-      const artistData = await artistResponse.json();
-      const artistId = artistData.artists[0]?.id;
-      const artistName = artistData.artists[0]?.name;
-      if (!artistId) {
-        console.error("Artist not found");
+      if (!spotifyArtist) {
+        console.error("Artist not found on Spotify");
         return;
       }
 
-      const eventResponse = await fetch(
-        `https://musicbrainz.org/ws/2/event?artist=${artistId}&fmt=json`,
+      const spotifyArtistId = spotifyArtist.id;
+
+      // Get top tracks for the artist
+      const topTracksResponse = await fetch(
+        `https://api.spotify.com/v1/artists/${spotifyArtistId}/top-tracks?market=US`,
         {
           headers: {
-            "User-Agent": "ConcertQueryTool/1.0 (your-email@example.com)",
+            Authorization: `Bearer ${spotifyToken}`,
           },
         }
       );
+      const topTracksData = await topTracksResponse.json();
 
-      const eventData = await eventResponse.json();
+      const topTracks = (topTracksData.tracks || []).slice(0, 5).map((track) => ({
+        title: track.name,
+        audioUrl: track.preview_url || "",
+      }));
 
-      const parsedConcerts = await Promise.all(
-        (eventData.events || []).map(async (event) => {
-          const songTitles = ["Sample Song 1", "Sample Song 2"];
+      // Create a fake concert card with top tracks
+      const fakeConcert = {
+        date: new Date().toLocaleDateString(),
+        venue: `${spotifyArtist.name} Top Tracks`,
+        setlist: topTracks,
+      };
 
-          const setlistWithAudio = await Promise.all(
-            songTitles.map(async (title) => {
-              const spotifyResponse = await fetch(
-                `https://api.spotify.com/v1/search?q=${encodeURIComponent(`${title} ${artistName}`)}&type=track&limit=1`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${spotifyToken}`,
-                  },
-                }
-              );
-              const spotifyData = await spotifyResponse.json();
-              const previewUrl = spotifyData.tracks?.items[0]?.preview_url || "";
-
-              return {
-                title,
-                audioUrl: previewUrl || "",
-              };
-            })
-          );
-
-          return {
-            date: event.time || "Unknown Date",
-            venue: event.venue?.name || "Unknown Venue",
-            setlist: setlistWithAudio,
-          };
-        })
-      );
-
-      setConcerts(parsedConcerts);
+      setConcerts([fakeConcert]);
     } catch (error) {
-      console.error("Error fetching data from MusicBrainz or Spotify:", error);
+      console.error("Error fetching data from Spotify:", error);
     }
   };
 
@@ -97,13 +79,9 @@ export default function ConcertQueryTool() {
 
       <div style={{ marginBottom: "10px" }}>
         <button onClick={fetchSpotifyToken}>Load Token</button>
-        <input
-          type="text"
-          placeholder="Spotify Token (auto-loaded)..."
-          value={spotifyToken}
-          onChange={(e) => setSpotifyToken(e.target.value)}
-          style={{ marginLeft: "10px", width: "60%" }}
-        />
+        <span style={{ marginLeft: "10px", color: "green" }}>
+          {spotifyToken ? "Token Loaded ✔️" : "No token yet"}
+        </span>
       </div>
 
       <div style={{ marginBottom: "20px" }}>
