@@ -20,7 +20,7 @@ export default function ConcertQueryTool() {
 
   const fetchMusicBrainzInfo = async (title, artistName) => {
     try {
-      const query = `recording:"${title}" AND artist:"${artistName}"`;
+      const query = `recording:\"${title}\" AND artist:\"${artistName}\"`;
       const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=1&inc=artist-credits+releases+labels+isrcs`;
 
       const response = await fetch(url, {
@@ -44,6 +44,9 @@ export default function ConcertQueryTool() {
       const copyright = release?.disambiguation || "Unknown © Info";
       const musicBrainzISRC = recording.isrcs?.[0] || "N/A";
 
+      const proInfo = await fetchPROInfo(musicBrainzISRC);
+      const archiveLinks = await fetchArchiveLiveTracks(title, artistName);
+
       return {
         artist,
         album: releaseTitle,
@@ -53,10 +56,76 @@ export default function ConcertQueryTool() {
         copyright,
         musicBrainzISRC,
         musicBrainzUrl: `https://musicbrainz.org/recording/${recording.id}`,
+        proInfo,
+        archiveLinks,
       };
     } catch (error) {
       console.error("Error fetching MusicBrainz data:", error);
       return null;
+    }
+  };
+
+  const fetchPROInfo = async (isrc) => {
+    if (!isrc) return null;
+    try {
+      const url = `https://musicbrainz.org/ws/2/isrc/${isrc}?inc=recordings+artist-credits+work-rels+url-rels&fmt=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "ConcertQueryTool/1.0 (your-email@example.com)" },
+      });
+      const data = await response.json();
+
+      const work = data.isrc?.recordings?.[0]?.works?.[0];
+      if (!work) return null;
+
+      const relationships = work.relations || [];
+      const writers = relationships
+        .filter((rel) => rel.type === "composer" || rel.type === "lyricist")
+        .map((rel) => rel.artist?.name);
+
+      const publishers = relationships
+        .filter((rel) => rel.type === "publisher")
+        .map((rel) => rel.artist?.name);
+
+      return {
+        writers: writers.length ? writers : ["Unknown"],
+        publishers: publishers.length ? publishers : ["Unknown"],
+      };
+    } catch (error) {
+      console.error("Error fetching PRO info:", error);
+      return null;
+    }
+  };
+
+  const fetchArchiveLiveTracks = async (title, artist) => {
+    try {
+      const searchUrl = `https://archive.org/advancedsearch.php?q=title:\"${title}\"+AND+creator:\"${artist}\"+AND+mediatype:(audio)&fl[]=identifier,title,creator,date&rows=3&page=1&output=json`;
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+
+      const results = await Promise.all(
+        (data.response?.docs || []).map(async (item) => {
+          const metaUrl = `https://archive.org/metadata/${item.identifier}`;
+          const metaRes = await fetch(metaUrl);
+          const metaData = await metaRes.json();
+
+          const mp3Files = (metaData.files || []).filter((f) => f.format === "VBR MP3");
+          const links = mp3Files.map((file) => ({
+            title: file.title || file.name,
+            url: `https://archive.org/download/${item.identifier}/${file.name}`,
+          }));
+
+          return {
+            recordingTitle: item.title,
+            date: item.date,
+            links,
+          };
+        })
+      );
+
+      return results;
+    } catch (error) {
+      console.error("Error fetching Archive.org data:", error);
+      return [];
     }
   };
 
@@ -115,127 +184,62 @@ export default function ConcertQueryTool() {
       <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "10px" }}>
         🎧 Music Metadata Tool
       </h1>
-
-      {view === "search" && (
-        <>
-          <button onClick={fetchSpotifyToken}>Load Token</button>
-          <span style={{ marginLeft: "10px", color: "green" }}>
-            {spotifyToken ? "Token Loaded ✔️" : "No token yet"}
-          </span>
-
-          <div style={{ marginTop: "10px" }}>
-            <label>
-              <input
-                type="radio"
-                value="artist"
-                checked={searchMode === "artist"}
-                onChange={() => setSearchMode("artist")}
-              />
-              Artist
-            </label>
-            <label style={{ marginLeft: "20px" }}>
-              <input
-                type="radio"
-                value="track"
-                checked={searchMode === "track"}
-                onChange={() => setSearchMode("track")}
-              />
-              Track Name
-            </label>
-            <label style={{ marginLeft: "20px" }}>
-              <input
-                type="radio"
-                value="isrc"
-                checked={searchMode === "isrc"}
-                onChange={() => setSearchMode("isrc")}
-              />
-              ISRC
-            </label>
-          </div>
-
-          <div style={{ marginTop: "10px" }}>
-            <input
-              type="text"
-              placeholder={`Enter ${searchMode}...`}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              style={{ marginRight: "10px", width: "60%" }}
-            />
-            <button onClick={handleSearch}>Search</button>
-          </div>
-        </>
-      )}
-
+      <div>
+        <button onClick={fetchSpotifyToken}>Load Token</button>
+        <input
+          type="text"
+          placeholder={`Enter ${searchMode}...`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button onClick={handleSearch}>Search</button>
+      </div>
       {view === "results" && (
-        <>
-          <button onClick={() => setView("search")}>⬅ Back</button>
-          <h2>Results</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#f0f0f0" }}>
-                <th style={{ padding: "8px", border: "1px solid #ccc" }}>Album Art</th>
-                <th style={{ padding: "8px", border: "1px solid #ccc" }}>Track Info</th>
-                <th style={{ padding: "8px", border: "1px solid #ccc" }}>Spotify Duration</th>
-                <th style={{ padding: "8px", border: "1px solid #ccc" }}>MusicBrainz Info</th>
+        <table>
+          <thead>
+            <tr>
+              <th>Track</th>
+              <th>Spotify ISRC</th>
+              <th>MusicBrainz ISRC</th>
+              <th>Writers</th>
+              <th>Publishers</th>
+              <th>Archive.org Live Tracks</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((track, index) => (
+              <tr key={index}>
+                <td>{track.name}</td>
+                <td>{track.external_ids?.isrc || "N/A"}</td>
+                <td>{track.mbInfo?.musicBrainzISRC || "N/A"}</td>
+                <td>{track.mbInfo?.proInfo?.writers.join(", ") || "N/A"}</td>
+                <td>{track.mbInfo?.proInfo?.publishers.join(", ") || "N/A"}</td>
+                <td>
+                  {track.mbInfo?.archiveLinks?.length ? (
+                    <ul>
+                      {track.mbInfo.archiveLinks.map((rec, i) => (
+                        <li key={i}>
+                          <strong>{rec.recordingTitle}</strong> ({rec.date})
+                          <ul>
+                            {rec.links.map((link, j) => (
+                              <li key={j}>
+                                <a href={link.url} target="_blank" rel="noopener noreferrer">
+                                  {link.title}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    "No Live Tracks"
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {results.map((track, index) => (
-                <motion.tr
-                  key={index}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  style={{ borderBottom: "1px solid #ccc" }}
-                >
-                  <td style={{ padding: "8px", border: "1px solid #ccc", textAlign: "center" }}>
-                    <img
-                      src={track.album.images[0]?.url}
-                      alt="Album Art"
-                      style={{ width: "60px", borderRadius: "5px" }}
-                    />
-                  </td>
-                  <td style={{ padding: "8px", border: "1px solid #ccc" }}>
-                    <strong>{track.name}</strong>
-                    {track.explicit && <span style={{ color: "red", marginLeft: "5px" }}>🔞 Explicit</span>}
-                    <p style={{ margin: 0 }}>Artist: {track.artists[0].name}</p>
-                    <p style={{ margin: 0 }}>Album: {track.album.name} ({track.album.release_date})</p>
-                    <p style={{ margin: 0 }}>Spotify ISRC: {track.external_ids?.isrc || "N/A"}</p>
-                    <p style={{ margin: 0 }}>MusicBrainz ISRC: {track.mbInfo?.musicBrainzISRC || "N/A"}</p>
-                    <a href={track.external_urls.spotify} target="_blank" rel="noopener noreferrer">
-                      Open in Spotify
-                    </a>
-                    <br />
-                    {track.preview_url ? (
-                      <audio controls src={track.preview_url} style={{ marginTop: "5px", width: "200px" }} />
-                    ) : (
-                      <span style={{ color: "gray" }}>No preview</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "8px", border: "1px solid #ccc" }}>
-                    {Math.floor(track.duration_ms / 60000)}:
-                    {String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, "0")}
-                  </td>
-                  <td style={{ padding: "8px", border: "1px solid #ccc" }}>
-                    {track.mbInfo ? (
-                      <>
-                        <p style={{ margin: 0 }}>Artist: {track.mbInfo.artist}</p>
-                        <p style={{ margin: 0 }}>Album: {track.mbInfo.album} ({track.mbInfo.year})</p>
-                        <p style={{ margin: 0 }}>Duration: {track.mbInfo.duration}</p>
-                        <p style={{ margin: 0 }}>℗ Label: {track.mbInfo.label}</p>
-                        <p style={{ margin: 0 }}>©: {track.mbInfo.copyright}</p>
-                        <a href={track.mbInfo.musicBrainzUrl} target="_blank" rel="noopener noreferrer">
-                          View on MusicBrainz
-                        </a>
-                      </>
-                    ) : (
-                      <span style={{ color: "gray" }}>No MB info</span>
-                    )}
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
