@@ -60,14 +60,115 @@ export default function ConcertQueryTool() {
     }
   };
 
+  const handleSearch = async () => {
+    if (!spotifyToken) {
+      alert("Spotify token not loaded. Click 'Load Token' first.");
+      return;
+    }
+
+    const queryParam = searchMode === "isrc" ? `isrc:${query}` : query;
+    const type = searchMode === "artist" ? "artist" : "track";
+
+    const response = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(queryParam)}&type=${type}&limit=5`,
+      {
+        headers: { Authorization: `Bearer ${spotifyToken}` },
+      }
+    );
+
+    const data = await response.json();
+
+    if (searchMode === "artist") {
+      const artist = data.artists.items[0];
+      const topTracksRes = await fetch(
+        `https://api.spotify.com/v1/artists/${artist.id}/top-tracks?market=US`,
+        {
+          headers: { Authorization: `Bearer ${spotifyToken}` },
+        }
+      );
+      const topTracksData = await topTracksRes.json();
+
+      const enrichedTracks = await Promise.all(
+        topTracksData.tracks.map(async (track) => {
+          const mbInfo = await fetchMusicBrainzInfo(track.name, artist.name);
+          return { ...track, mbInfo };
+        })
+      );
+
+      setResults(enrichedTracks);
+    } else {
+      const enrichedTracks = await Promise.all(
+        data.tracks.items.map(async (track) => {
+          const mbInfo = await fetchMusicBrainzInfo(track.name, track.artists[0].name);
+          return { ...track, mbInfo };
+        })
+      );
+
+      setResults(enrichedTracks);
+    }
+
+    setView("results");
+  };
+
   return (
     <div style={{ padding: "20px", maxWidth: "1000px", margin: "auto" }}>
       <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "10px" }}>
         🎧 Music Metadata Tool
       </h1>
 
+      {view === "search" && (
+        <>
+          <button onClick={fetchSpotifyToken}>Load Token</button>
+          <span style={{ marginLeft: "10px", color: "green" }}>
+            {spotifyToken ? "Token Loaded ✔️" : "No token yet"}
+          </span>
+
+          <div style={{ marginTop: "10px" }}>
+            <label>
+              <input
+                type="radio"
+                value="artist"
+                checked={searchMode === "artist"}
+                onChange={() => setSearchMode("artist")}
+              />
+              Artist
+            </label>
+            <label style={{ marginLeft: "20px" }}>
+              <input
+                type="radio"
+                value="track"
+                checked={searchMode === "track"}
+                onChange={() => setSearchMode("track")}
+              />
+              Track Name
+            </label>
+            <label style={{ marginLeft: "20px" }}>
+              <input
+                type="radio"
+                value="isrc"
+                checked={searchMode === "isrc"}
+                onChange={() => setSearchMode("isrc")}
+              />
+              ISRC
+            </label>
+          </div>
+
+          <div style={{ marginTop: "10px" }}>
+            <input
+              type="text"
+              placeholder={`Enter ${searchMode}...`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{ marginRight: "10px", width: "60%" }}
+            />
+            <button onClick={handleSearch}>Search</button>
+          </div>
+        </>
+      )}
+
       {view === "results" && (
         <>
+          <button onClick={() => setView("search")}>⬅ Back</button>
           <h2>Results</h2>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
