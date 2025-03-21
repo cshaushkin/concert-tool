@@ -7,107 +7,17 @@ export default function ConcertQueryTool() {
   const [query, setQuery] = useState("");
   const [spotifyToken, setSpotifyToken] = useState("");
   const [results, setResults] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch Spotify token
   const fetchSpotifyToken = async () => {
     try {
       const response = await fetch("/api/spotify-token");
-      if (!response.ok) throw new Error("Failed to fetch Spotify token");
       const data = await response.json();
       setSpotifyToken(data.access_token);
     } catch (error) {
       console.error("Error fetching Spotify token:", error);
-      alert("Failed to load Spotify token. Please try again.");
     }
   };
 
-  // Fetch additional track details from Spotify
-  const fetchSpotifyTrackDetails = async (trackId) => {
-    try {
-      const trackResponse = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-        headers: { Authorization: `Bearer ${spotifyToken}` },
-      });
-      const trackData = await trackResponse.json();
-
-      const audioFeaturesResponse = await fetch(`https://api.spotify.com/v1/audio-features/${trackId}`, {
-        headers: { Authorization: `Bearer ${spotifyToken}` },
-      });
-      const audioFeaturesData = await audioFeaturesResponse.json();
-
-      return {
-        albumArt: trackData.album.images[0]?.url, // Highest resolution album art
-        popularity: trackData.popularity,
-        audioFeatures: {
-          danceability: audioFeaturesData.danceability,
-          energy: audioFeaturesData.energy,
-          tempo: audioFeaturesData.tempo,
-          key: audioFeaturesData.key,
-          mode: audioFeaturesData.mode,
-        },
-      };
-    } catch (error) {
-      console.error("Error fetching Spotify track details:", error);
-      return null;
-    }
-  };
-
-  // Fetch artist details from Spotify
-  const fetchSpotifyArtistDetails = async (artistId) => {
-    try {
-      const artistResponse = await fetch(`https://api.spotify.com/v1/artists/${artistId}`, {
-        headers: { Authorization: `Bearer ${spotifyToken}` },
-      });
-      const artistData = await artistResponse.json();
-
-      const relatedArtistsResponse = await fetch(`https://api.spotify.com/v1/artists/${artistId}/related-artists`, {
-        headers: { Authorization: `Bearer ${spotifyToken}` },
-      });
-      const relatedArtistsData = await relatedArtistsResponse.json();
-
-      return {
-        genres: artistData.genres,
-        followers: artistData.followers.total,
-        relatedArtists: relatedArtistsData.artists.map((artist) => artist.name),
-      };
-    } catch (error) {
-      console.error("Error fetching Spotify artist details:", error);
-      return null;
-    }
-  };
-
-  // Fetch lyrics using Lyrics.ovh API
-  const fetchLyrics = async (artist, title) => {
-    try {
-      const response = await fetch(`https://api.lyrics.ovh/v1/${artist}/${title}`);
-      const data = await response.json();
-      return data.lyrics || "Lyrics not found.";
-    } catch (error) {
-      console.error("Error fetching lyrics:", error);
-      return "Lyrics not available.";
-    }
-  };
-
-  // Fetch release information from MusicBrainz
-  const fetchMusicBrainzReleaseInfo = async (releaseId) => {
-    try {
-      const response = await fetch(`https://musicbrainz.org/ws/2/release/${releaseId}?fmt=json`, {
-        headers: { "User-Agent": "ConcertQueryTool/1.0 (your-email@example.com)" },
-      });
-      const data = await response.json();
-      return {
-        releaseType: data["release-group"]?.["primary-type"] || "Unknown",
-        tracklist: data.media?.[0]?.tracks?.map((track) => track.title) || [],
-        label: data["label-info"]?.[0]?.label?.name || "Unknown",
-        catalogNumber: data["label-info"]?.[0]?.["catalog-number"] || "N/A",
-      };
-    } catch (error) {
-      console.error("Error fetching MusicBrainz release info:", error);
-      return null;
-    }
-  };
-
-  // Fetch MusicBrainz info
   const fetchMusicBrainzInfo = async (title, artistName) => {
     try {
       const query = `recording:"${title}" AND artist:"${artistName}"`;
@@ -135,7 +45,6 @@ export default function ConcertQueryTool() {
       const musicBrainzISRC = recording.isrcs?.[0] || "N/A";
 
       const proInfo = await fetchPROInfo(musicBrainzISRC);
-      const releaseInfo = await fetchMusicBrainzReleaseInfo(release.id);
 
       return {
         artist,
@@ -147,7 +56,6 @@ export default function ConcertQueryTool() {
         musicBrainzISRC,
         musicBrainzUrl: `https://musicbrainz.org/recording/${recording.id}`,
         proInfo,
-        releaseInfo,
       };
     } catch (error) {
       console.error("Error fetching MusicBrainz data:", error);
@@ -155,7 +63,6 @@ export default function ConcertQueryTool() {
     }
   };
 
-  // Fetch PRO info
   const fetchPROInfo = async (isrc) => {
     if (!isrc) return null;
     try {
@@ -187,144 +94,94 @@ export default function ConcertQueryTool() {
     }
   };
 
-  // Handle search
   const handleSearch = async () => {
     if (!spotifyToken) {
       alert("Spotify token not loaded. Click 'Load Token' first.");
       return;
     }
 
-    setIsLoading(true);
-    try {
-      const queryParam = searchMode === "isrc" ? `isrc:${query}` : query;
-      const type = searchMode === "artist" ? "artist" : "track";
+    const queryParam = searchMode === "isrc" ? `isrc:${query}` : query;
+    const type = searchMode === "artist" ? "artist" : "track";
 
-      const response = await fetch(
-        `https://api.spotify.com/v1/search?q=${encodeURIComponent(queryParam)}&type=${type}&limit=5`,
+    const response = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(queryParam)}&type=${type}&limit=5`,
+      {
+        headers: { Authorization: `Bearer ${spotifyToken}` },
+      }
+    );
+
+    const data = await response.json();
+
+    if (searchMode === "artist") {
+      const artist = data.artists.items[0];
+      const topTracksRes = await fetch(
+        `https://api.spotify.com/v1/artists/${artist.id}/top-tracks?market=US`,
         {
           headers: { Authorization: `Bearer ${spotifyToken}` },
         }
       );
+      const topTracksData = await topTracksRes.json();
 
-      const data = await response.json();
+      const enrichedTracks = await Promise.all(
+        topTracksData.tracks.map(async (track) => {
+          const mbInfo = await fetchMusicBrainzInfo(track.name, artist.name);
+          return { ...track, mbInfo };
+        })
+      );
 
-      if (searchMode === "artist") {
-        const artist = data.artists.items[0];
-        const artistDetails = await fetchSpotifyArtistDetails(artist.id);
-        const topTracksRes = await fetch(
-          `https://api.spotify.com/v1/artists/${artist.id}/top-tracks?market=US`,
-          {
-            headers: { Authorization: `Bearer ${spotifyToken}` },
-          }
-        );
-        const topTracksData = await topTracksRes.json();
+      setResults(enrichedTracks);
+    } else {
+      const enrichedTracks = await Promise.all(
+        data.tracks.items.map(async (track) => {
+          const mbInfo = await fetchMusicBrainzInfo(track.name, track.artists[0].name);
+          return { ...track, mbInfo };
+        })
+      );
 
-        const enrichedTracks = await Promise.all(
-          topTracksData.tracks.map(async (track) => {
-            const mbInfo = await fetchMusicBrainzInfo(track.name, artist.name);
-            const spotifyDetails = await fetchSpotifyTrackDetails(track.id);
-            const lyrics = await fetchLyrics(artist.name, track.name);
-            return { ...track, mbInfo, spotifyDetails, lyrics, artistDetails };
-          })
-        );
-
-        setResults(enrichedTracks);
-      } else {
-        const enrichedTracks = await Promise.all(
-          data.tracks.items.map(async (track) => {
-            const mbInfo = await fetchMusicBrainzInfo(track.name, track.artists[0].name);
-            const spotifyDetails = await fetchSpotifyTrackDetails(track.id);
-            const lyrics = await fetchLyrics(track.artists[0].name, track.name);
-            return { ...track, mbInfo, spotifyDetails, lyrics };
-          })
-        );
-
-        setResults(enrichedTracks);
-      }
-
-      setView("results");
-    } catch (error) {
-      console.error("Error during search:", error);
-      alert("An error occurred while fetching data. Please try again.");
-    } finally {
-      setIsLoading(false);
+      setResults(enrichedTracks);
     }
+
+    setView("results");
   };
 
   return (
-    <div style={{ padding: "20px", maxWidth: "1000px", margin: "auto", fontFamily: "Arial, sans-serif" }}>
-      <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "20px", color: "#1DB954" }}>
+    <div style={{ padding: "20px", maxWidth: "1000px", margin: "auto" }}>
+      <h1 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "10px" }}>
         🎧 Music Metadata Tool
       </h1>
-      <div style={{ marginBottom: "20px" }}>
-        <button
-          onClick={fetchSpotifyToken}
-          style={{ padding: "10px", marginRight: "10px", backgroundColor: "#1DB954", color: "white", border: "none", borderRadius: "5px" }}
-        >
-          Load Token
-        </button>
+      <div>
+        <button onClick={fetchSpotifyToken}>Load Token</button>
         <input
           type="text"
           placeholder={`Enter ${searchMode}...`}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          style={{ padding: "10px", marginRight: "10px", width: "300px", borderRadius: "5px", border: "1px solid #ccc" }}
         />
-        <button
-          onClick={handleSearch}
-          style={{ padding: "10px", backgroundColor: "#1DB954", color: "white", border: "none", borderRadius: "5px" }}
-        >
-          Search
-        </button>
+        <button onClick={handleSearch}>Search</button>
       </div>
-      {isLoading && <p>Loading...</p>}
       {view === "results" && (
-        <div>
-          <button
-            onClick={() => setView("search")}
-            style={{ padding: "10px", marginBottom: "20px", backgroundColor: "#1DB954", color: "white", border: "none", borderRadius: "5px" }}
-          >
-            Back to Search
-          </button>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#1DB954", color: "white" }}>
-                <th style={{ padding: "10px", textAlign: "left" }}>Track</th>
-                <th style={{ padding: "10px", textAlign: "left" }}>Album Art</th>
-                <th style={{ padding: "10px", textAlign: "left" }}>Spotify ISRC</th>
-                <th style={{ padding: "10px", textAlign: "left" }}>MusicBrainz ISRC</th>
-                <th style={{ padding: "10px", textAlign: "left" }}>Writers</th>
-                <th style={{ padding: "10px", textAlign: "left" }}>Publishers</th>
-                <th style={{ padding: "10px", textAlign: "left" }}>Popularity</th>
-                <th style={{ padding: "10px", textAlign: "left" }}>Genres</th>
-                <th style={{ padding: "10px", textAlign: "left" }}>Lyrics</th>
+        <table>
+          <thead>
+            <tr>
+              <th>Track</th>
+              <th>Spotify ISRC</th>
+              <th>MusicBrainz ISRC</th>
+              <th>Writers</th>
+              <th>Publishers</th>
+            </tr>
+          </thead>
+          <tbody>
+            {results.map((track, index) => (
+              <tr key={index}>
+                <td>{track.name}</td>
+                <td>{track.external_ids?.isrc || "N/A"}</td>
+                <td>{track.mbInfo?.musicBrainzISRC || "N/A"}</td>
+                <td>{track.mbInfo?.proInfo?.writers.join(", ") || "N/A"}</td>
+                <td>{track.mbInfo?.proInfo?.publishers.join(", ") || "N/A"}</td>
               </tr>
-            </thead>
-            <tbody>
-              {results.map((track, index) => (
-                <motion.tr
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.1 }}
-                  style={{ borderBottom: "1px solid #ccc" }}
-                >
-                  <td style={{ padding: "10px" }}>{track.name}</td>
-                  <td style={{ padding: "10px" }}>
-                    <img src={track.spotifyDetails?.albumArt} alt="Album Art" style={{ width: "50px" }} />
-                  </td>
-                  <td style={{ padding: "10px" }}>{track.external_ids?.isrc || "N/A"}</td>
-                  <td style={{ padding: "10px" }}>{track.mbInfo?.musicBrainzISRC || "N/A"}</td>
-                  <td style={{ padding: "10px" }}>{track.mbInfo?.proInfo?.writers.join(", ") || "N/A"}</td>
-                  <td style={{ padding: "10px" }}>{track.mbInfo?.proInfo?.publishers.join(", ") || "N/A"}</td>
-                  <td style={{ padding: "10px" }}>{track.spotifyDetails?.popularity || "N/A"}</td>
-                  <td style={{ padding: "10px" }}>{track.artistDetails?.genres.join(", ") || "N/A"}</td>
-                  <td style={{ padding: "10px" }}>{track.lyrics || "N/A"}</td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
