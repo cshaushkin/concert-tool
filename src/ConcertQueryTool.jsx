@@ -18,6 +18,18 @@ export default function ConcertQueryTool() {
     }
   };
 
+  const fetchAudioFeatures = async (trackId) => {
+    try {
+      const response = await fetch(`https://api.spotify.com/v1/audio-features/${trackId}`, {
+        headers: { Authorization: `Bearer ${spotifyToken}` },
+      });
+      return await response.json();
+    } catch (error) {
+      console.error("Error fetching audio features:", error);
+      return null;
+    }
+  };
+
   const fetchMusicBrainzInfo = async (title, artistName) => {
     try {
       const query = `recording:"${title}" AND artist:"${artistName}"`;
@@ -91,7 +103,8 @@ export default function ConcertQueryTool() {
       const enrichedTracks = await Promise.all(
         topTracksData.tracks.map(async (track) => {
           const mbInfo = await fetchMusicBrainzInfo(track.name, artist.name);
-          return { ...track, mbInfo };
+          const audioFeatures = await fetchAudioFeatures(track.id);
+          return { ...track, mbInfo, audioFeatures };
         })
       );
 
@@ -100,7 +113,8 @@ export default function ConcertQueryTool() {
       const enrichedTracks = await Promise.all(
         data.tracks.items.map(async (track) => {
           const mbInfo = await fetchMusicBrainzInfo(track.name, track.artists[0].name);
-          return { ...track, mbInfo };
+          const audioFeatures = await fetchAudioFeatures(track.id);
+          return { ...track, mbInfo, audioFeatures };
         })
       );
 
@@ -176,6 +190,7 @@ export default function ConcertQueryTool() {
                 <th style={{ padding: "8px", border: "1px solid #ccc" }}>Album Art</th>
                 <th style={{ padding: "8px", border: "1px solid #ccc" }}>Track Info</th>
                 <th style={{ padding: "8px", border: "1px solid #ccc" }}>Spotify Duration</th>
+                <th style={{ padding: "8px", border: "1px solid #ccc" }}>Audio Features</th>
                 <th style={{ padding: "8px", border: "1px solid #ccc" }}>MusicBrainz Info</th>
               </tr>
             </thead>
@@ -200,7 +215,6 @@ export default function ConcertQueryTool() {
                     <p style={{ margin: 0 }}>Artist: {track.artists[0].name}</p>
                     <p style={{ margin: 0 }}>Album: {track.album.name} ({track.album.release_date})</p>
                     <p style={{ margin: 0 }}>Spotify ISRC: {track.external_ids?.isrc || "N/A"}</p>
-                    <p style={{ margin: 0 }}>MusicBrainz ISRC: {track.mbInfo?.musicBrainzISRC || "N/A"}</p>
                     <a href={track.external_urls.spotify} target="_blank" rel="noopener noreferrer">
                       Open in Spotify
                     </a>
@@ -216,6 +230,19 @@ export default function ConcertQueryTool() {
                     {String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, "0")}
                   </td>
                   <td style={{ padding: "8px", border: "1px solid #ccc" }}>
+                    {track.audioFeatures ? (
+                      <>
+                        <p style={{ margin: 0 }}>🎚️ Danceability: {track.audioFeatures.danceability}</p>
+                        <p style={{ margin: 0 }}>⚡ Energy: {track.audioFeatures.energy}</p>
+                        <p style={{ margin: 0 }}>🎵 Tempo: {track.audioFeatures.tempo} BPM</p>
+                        <p style={{ margin: 0 }}>🎼 Key: {track.audioFeatures.key}</p>
+                        <p style={{ margin: 0 }}>🎭 Mode: {track.audioFeatures.mode === 1 ? "Major" : "Minor"}</p>
+                      </>
+                    ) : (
+                      <span style={{ color: "gray" }}>No audio data</span>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px", border: "1px solid #ccc" }}>
                     {track.mbInfo ? (
                       <>
                         <p style={{ margin: 0 }}>Artist: {track.mbInfo.artist}</p>
@@ -223,6 +250,7 @@ export default function ConcertQueryTool() {
                         <p style={{ margin: 0 }}>Duration: {track.mbInfo.duration}</p>
                         <p style={{ margin: 0 }}>℗ Label: {track.mbInfo.label}</p>
                         <p style={{ margin: 0 }}>©: {track.mbInfo.copyright}</p>
+                        <p style={{ margin: 0 }}>MB ISRC: {track.mbInfo.musicBrainzISRC}</p>
                         <a href={track.mbInfo.musicBrainzUrl} target="_blank" rel="noopener noreferrer">
                           View on MusicBrainz
                         </a>
